@@ -1,0 +1,1 @@
+/home/hoswoo/Desktop/Programming/Rust/rusty_chip8/target/debug/rusty_chip8: /home/hoswoo/Desktop/Programming/Rust/rusty_chip8/src/chip8.rs /home/hoswoo/Desktop/Programming/Rust/rusty_chip8/src/decoder.rs /home/hoswoo/Desktop/Programming/Rust/rusty_chip8/src/main.rs
