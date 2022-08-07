@@ -16,10 +16,10 @@ pub struct Chip8 {
     mem: [u8; MEM_SIZE],
     // gfx can technically be a boolean array but I prefer using u8 
     // so that I can cleanly XOR its values
-    gfx: [u8; DISP_X * DISP_Y],
+    pub gfx: [u8; DISP_X * DISP_Y],
     stack: Vec<u16>,
-    keys: [bool; NUM_KEYS],
-    draw_flag: bool,
+    pub keys: [bool; NUM_KEYS],
+    pub draw_flag: bool,
 
     // Registers
     v: [u8; NUM_VREGS], 
@@ -420,12 +420,12 @@ impl Chip8 {
         println!("------------------------");
         println!("V REGISTERS:");
         for i in 0..NUM_VREGS {
-            print!("{:#X}\t", i);
+            print!("{:#5X}", i);
         }
         println!();
 
         for i in 0..NUM_VREGS {
-            print!("{:#X}\t", self.v[i]);
+            print!("{:#5X}", self.v[i]);
         }
         println!();
 
@@ -433,11 +433,9 @@ impl Chip8 {
         println!("DT: {:#X}", self.dt);
         println!("ST: {:#X}", self.st);
     }
-    // TODO: This is temporarily acting as a display, we eventually
-    // need to implement this in sdl2
+
     pub fn print_screen(self: &mut Self){
         if self.draw_flag {
-            self.draw_flag = false;
             for i in 0..DISP_X*DISP_Y {
                 if self.gfx[i] != 0 {
                     print!("{}", PX);
