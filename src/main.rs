@@ -36,20 +36,19 @@ pub fn main() {
 
     Display::clear(&mut canvas);
     let mut num_cycles = 0;
-    'running: loop {
+    loop {
         let frame = std::time::Duration::from_micros(1000);
-        let now = std::time::Instant::now();
         std::thread::sleep(frame);
-        c8.cycle();
+        c8.cycle(&input_handler, &sdl_context);
         println!("Cycles: {}", num_cycles);
         // let mut s=String::new();
         // std::io::stdin().read_line(&mut s).ok();
         // c8.print_registers();
-        input_handler.set_chip8_keys(&mut c8, &sdl_context);
+        if input_handler.set_chip8_keys(&mut c8, &sdl_context) {
+            break;
+        }
         input_handler.print_chip8_keys(&c8);
         Display::render_gfx(&mut c8, &mut canvas);
         num_cycles += 1;        
-        // ::std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
-        // ::std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
     }
 }

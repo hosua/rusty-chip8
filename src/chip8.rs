@@ -7,6 +7,7 @@ const MSB_POS: usize = 7;
 const NUM_KEYS: usize = 16;
 const PX: &'static str = "\u{2588}\u{2588}";
 
+use crate::input;
 use std::num::Wrapping;
 use std::vec::Vec;
 use rand::Rng;
@@ -27,6 +28,8 @@ pub struct Chip8 {
     dt: u8,
     st: u8,
     opcode: u16,
+
+    pub exit_flag: bool,
 }
 
 impl Chip8 {
@@ -44,9 +47,12 @@ impl Chip8 {
         let dt: u8 = 0x0;
         let st: u8 = 0x0;
         let opcode: u16 = 0x0;
+
+        let exit_flag = false;
         Self { mem, gfx, keys, draw_flag, stack, 
                v, i, pc, dt, st, 
-               opcode }
+               opcode,
+               exit_flag }
     }
     // Load all font data to chip8 memory
     pub fn load_font(self: &mut Self){
@@ -91,9 +97,9 @@ impl Chip8 {
 
     }
     // Execute a cpu cycle
-    pub fn cycle(self: &mut Self){
+    pub fn cycle(self: &mut Self, input_handler: &input::Handler, sdl_context: &sdl2::Sdl){
         self.fetch();
-        self.execute();
+        self.execute(input_handler, sdl_context);
         self.pc += 2;
     }
     // Fetches opcode from data addressed by the program counter
@@ -103,7 +109,7 @@ impl Chip8 {
     }
     
     // Decodes and executes opcode instructions
-    fn execute(self: &mut Self) {
+    fn execute(self: &mut Self, input_handler: &input::Handler, sdl_context: &sdl2::Sdl) {
         // Decode variables from opcode 
         let x = ((self.opcode & 0x0F00) >> 8) as usize;        
         let y = ((self.opcode & 0x00F0) >> 4) as usize;        
@@ -119,7 +125,7 @@ impl Chip8 {
                     // 00E0: CLS - Clear screen
                     0x0000 => {
                         opstr = "CLS";
-                        self.gfx[0..MEM_SIZE].fill(0);
+                        self.gfx[0..DISP_X * DISP_Y].fill(0);
                         self.draw_flag = true;
                         println!("{}", opstr);
                     }
@@ -132,7 +138,7 @@ impl Chip8 {
                         println!("{}", opstr);
                     }
                     _ => {
-                        eprintln!("Invalid 0x0000 opcode ({:#06X})", self.opcode);
+                        eprintln!("Invalid 0x0000 opcode ({:#6X})", self.opcode);
                     }
                 }
             }
@@ -152,17 +158,17 @@ impl Chip8 {
                 // Jump to nnn
                 self.pc = nnn as usize;
                 self.pc -= 2;
-                println!("{} {:#06}", opstr, nnn)
+                println!("{} {:#06X}", opstr, nnn)
             }
             // 3xkk: SE - Skip instruction if if Vx == kk
             0x3000 => {
                 opstr = "SE"; 
                 if self.v[x] == kk {
                     self.pc += 2;
-                    println!("{} Vx == kk", opstr);
+                    println!("{} Vx == kk{:#04X}", opstr, kk);
                     println!("SKIPPING INSTRUCTION");
                 } else {
-                    println!("{} Vx != kk", opstr);
+                    println!("{} Vx != kk{:#04X}", opstr, kk);
                     println!("NOT SKIPPING INSTRUCTION");
                 }
             }
@@ -172,10 +178,10 @@ impl Chip8 {
                 opstr = "SNE"; 
                 if self.v[x] != kk {
                     self.pc += 2;
-                    println!("{} Vx != kk", opstr);
+                    println!("{} Vx != kk{:#04X}", opstr, kk);
                     println!("SKIPPING INSTRUCTION");
                 } else {
-                    println!("{} Vx == kk", opstr);
+                    println!("{} Vx == kk{:#04X}", opstr, kk);
                     println!("NOT SKIPPING INSTRUCTION");
                 }
             }
@@ -185,10 +191,10 @@ impl Chip8 {
                 opstr = "SE"; 
                 if self.v[x] == self.v[y] {
                     self.pc += 2;
-                    println!("{} v[{:#06}] == v[{:#06}]", opstr, x, y);
+                    println!("{} v[{:#06X}] == v[{:#06X}]", opstr, x, y);
                     println!("SKIPPING INSTRUCTION");
                 } else {
-                    println!("{} v[{:#06}] != v[{:#06}]", opstr, x, y);
+                    println!("{} v[{:#06X}] != v[{:#06X}]", opstr, x, y);
                     println!("NOT SKIPPING INSTRUCTION");
                 }
             }
@@ -197,7 +203,7 @@ impl Chip8 {
             0x6000 => {
                 opstr = "LD";
                 self.v[x] = kk;
-                println!("{} Vx = kk({:#06})", opstr, kk);
+                println!("{} Vx = kk({:#04X})", opstr, kk);
             }
             
             // 7xkk: ADD - Add kk to Vx
@@ -205,7 +211,7 @@ impl Chip8 {
                 opstr = "ADD";
                 let Wrapping(_vxkk) = Wrapping(self.v[x]) + Wrapping(kk);
                 self.v[x] = _vxkk;
-                println!("{} Vx += kk({:#06})", opstr, kk);
+                println!("{} Vx += kk({:#06X})", opstr, kk);
             }
             0x8000 => {
                 match self.opcode & 0x000F {
@@ -213,25 +219,25 @@ impl Chip8 {
                     0x0000 => {
                         opstr = "LD";
                         self.v[x] = self.v[y];
-                        println!("{} Vx = Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx = Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy1: OR Vx |= Vy
                     0x0001 => {
                         opstr = "OR";
                         self.v[x] |= self.v[y];
-                        println!("{} Vx |= Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx |= Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy2: AND Vx &= Vy
                     0x0002 => {
                         opstr = "AND";
                         self.v[x] &= self.v[y];
-                        println!("{} Vx &= Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx &= Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy3: XOR Vx ^= Vy
                     0x0003 => {
                         opstr = "XOR";
                         self.v[x] ^= self.v[y];
-                        println!("{} Vx &= Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx &= Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy4: ADD - Add Vy to Vx
                     0x0004 => {
@@ -245,14 +251,14 @@ impl Chip8 {
                             // No carry
                             self.v[0xF] = 0;
                         }
-                        println!("{} Vx += Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx += Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy5: SUB Vx -= Vy
                     0x0005 => {
                         opstr = "SUB";
                         let Wrapping(_vxy) = Wrapping(self.v[x]) - Wrapping(self.v[y]);
                         self.v[x] = _vxy;
-                        println!("{} Vx -= Vy({:#06})", opstr, self.v[y]);
+                        println!("{} Vx -= Vy({:#06X})", opstr, self.v[y]);
                     }
                     // 8xy6: SHR - Shift Vx right 1 
                     0x0006 => {
@@ -267,7 +273,7 @@ impl Chip8 {
                         opstr = "SUBN";
                         let Wrapping(_vyx) = Wrapping(self.v[y]) - Wrapping(self.v[x]);
                         self.v[x] = _vyx;
-                        println!("{} Vx = Vy({:#06}) - Vx({:#06})", opstr, self.v[y], self.v[x]);
+                        println!("{} Vx = Vy({:#06X}) - Vx({:#06X})", opstr, self.v[y], self.v[x]);
                     }
                     // 8xyE: SHL - Shift Vx left 1 
                     0x000E => {
@@ -277,7 +283,7 @@ impl Chip8 {
                         println!("{} Vx <<= 1", opstr);
                     }
                     _ => {
-                        eprintln!("Invalid 0x8000 opcode: {:#X}", self.opcode);
+                        eprintln!("Invalid 0x8000 opcode: {:#06X}", self.opcode);
                     }
                 }
             }
@@ -304,13 +310,13 @@ impl Chip8 {
                 opstr = "JP";
                 self.pc = self.v[0x0] as usize + nnn as usize;
                 self.pc -= 2;
-                println!("{} nnn({:#X}) + V0({:#X})", opstr, nnn, self.v[0x0]);
+                println!("{} nnn({:#05X}) + V0({:#06X})", opstr, nnn, self.v[0x0]);
             }
             // Cxkk - RND - Generate random number from 0-255, then & kk and store the result in Vx
             0xC000 => {
                 opstr = "RND";
                 self.v[x] = rand::thread_rng().gen_range(0..0xFF) & kk;
-                println!("{} kk({:#X}) = {:#X}", opstr, kk, self.v[x]);
+                println!("{} kk({:#04X}) = {:#04X}", opstr, kk, self.v[x]);
             }
             // Dxyn: DRW - Draw
             0xD000 => {
@@ -337,7 +343,7 @@ impl Chip8 {
                         }
                     }
                 }
-                println!("{} Vx({:#X}) Vy({:#X})", opstr, self.v[y], self.v[x]);
+                println!("{} Vx({:#06X}) Vy({:#06X})", opstr, self.v[y], self.v[x]);
                 self.draw_flag = true;
             }
             0xE000 => {
@@ -366,7 +372,7 @@ impl Chip8 {
                         }
                     }
                     _ => {
-                        eprintln!("Invalid 0xE000 opcode {:#X}", self.opcode);
+                        eprintln!("Invalid 0xE000 opcode {:#06X}", self.opcode);
                     }
                 }
             }
@@ -377,33 +383,39 @@ impl Chip8 {
                     0x0007 => {
                         opstr = "LD";
                         self.v[x] = self.dt;
-                        println!("{} Vx = dt({:#X})", opstr, self.dt);
+                        println!("{} Vx = dt({:#04X})", opstr, self.dt);
                     }
                     // TODO
                     // Fx0A: LD Vx, K - Wait for a key press and store the value of the key in Vx.
+                    0x000A => {
+                        opstr = "LD";
+                        let key_idx = input_handler.wait_for_key(self, sdl_context);
+                        self.v[x] = key_idx;
+                        println!("{} Vx, K{:#06X}", opstr, key_idx);
+                    }
                     // Fx15: LD DT, Vx - Set delay timer = Vx.
                     0x0015 => {
                         opstr = "LD";
                         self.dt = self.v[x];
-                        println!("{} dt = Vx({:#X})", opstr, self.v[x]);
+                        println!("{} dt = Vx({:#06X})", opstr, self.dt);
                     }
                     // Fx18: LD ST, Vx - Set sound timer = Vx.
                     0x0018 => {
                         opstr = "LD";
                         self.st = self.v[x];
-                        println!("{} st = Vx({:#X})", opstr, self.v[x]);
+                        println!("{} st = Vx({:#06X})", opstr, self.v[x]);
                     }
                     // Fx1E: ADD I, Vx ---- I += Vx
                     0x001E => {
                         opstr = "ADD";
                         self.i += self.v[x] as u16;
-                        println!("{} i += Vx({:#X})", opstr, self.v[x]);
+                        println!("{} i += Vx({:#06X})", opstr, self.v[x]);
                     }
                     // Fx29: LD F, Vx - Set I = location of sprite for digit Vx.
                     0x0029 => {
                         opstr = "LD";
                         self.i += self.v[x] as u16 + 0x5;
-                        println!("{} i = Vx({:#X}) + 0x5", opstr, self.v[x]);
+                        println!("{} i = Vx({:#05X}) + 0x5", opstr, self.v[x]);
                     }
                     // Fx33: LD B, Vx - Store BCD representation of Vx in memory locations I, I+1, and I+2.
                     0x0033 => {
@@ -414,7 +426,7 @@ impl Chip8 {
                         self.mem[self.i as usize + 1] = (self.v[x] / 10) % 10;
                         // Loads 1s place
                         self.mem[self.i as usize + 2] = self.v[x] % 10;
-                        println!("{} i = Vx({:#X}) + 0x5", opstr, self.v[x]);
+                        println!("{} i = Vx({:#04X}) + 0x5", opstr, self.v[x]);
                     }
                     // Fx55: LD [I], Vx - Store registers V0 through Vx in memory starting at location I.
                     0x0055 => {
@@ -422,7 +434,7 @@ impl Chip8 {
                         for i in 0..x+1 {
                             self.mem[self.i as usize + i] = self.v[i];
                         }
-                        println!("{} mem = V0-Vx({:#X}) + 0x5", opstr, x);
+                        println!("{} mem = V0-Vx({:#04X}) + 0x5", opstr, x);
                     }
                     // Fx65: LD Vx, [I] - Read from memory starting at location I and store it into registers V0 through Vx.
                     0x0065 => {

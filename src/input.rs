@@ -3,7 +3,6 @@ use sdl2::keyboard::Keycode;
 use sdl2::keyboard::Scancode;
 
 use crate::chip8::Chip8;
-use sdl2::event::Event;
 // Provides a clean way of constructing a hashmap via a macro
 // https://stackoverflow.com/questions/28392008/is-there-a-more-concise-or-declarative-way-to-initialize-a-hashmap
 macro_rules! hashmap {
@@ -15,7 +14,7 @@ macro_rules! hashmap {
 }
 // All keyboard input logic is handled in here
 pub struct Handler {
-    key_map: HashMap<Keycode, i32>,
+    pub key_map: HashMap<Keycode, i32>,
 }
 
 impl Handler {
@@ -31,17 +30,18 @@ impl Handler {
         Self { key_map }
     } 
     // TODO: This shit is horrible, find a better way to write this.
-    pub fn set_chip8_keys(self: &Self, chip8: &mut Chip8, sdl_context: &sdl2::Sdl){
+    // Returns true if the chip8 should exit
+    pub fn set_chip8_keys(self: &Self, chip8: &mut Chip8, sdl_context: &sdl2::Sdl) -> bool {
         let mut event_pump = sdl_context.event_pump().unwrap();
         // I want to do something like this, but how???
         // for (key, val) in &self.key_map {
         //     let key_idx = *val as usize;
         // }
         for event in event_pump.poll_iter() {
+            use sdl2::event::Event;
             match event {
-                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    std::process::exit(0);
-                }
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => 
+                    return true,
                 Event::KeyDown { keycode: Some(Keycode::Num1), .. } => 
                     chip8.keys[self.key_map[&Keycode::Num1] as usize] = true,
                 Event::KeyDown { keycode: Some(Keycode::Num2), .. } =>
@@ -110,7 +110,41 @@ impl Handler {
                 
                 _ => {}
             }
+        }
+        return false;
+    }
 
+    pub fn wait_for_key(self: &Self, chip8: &mut Chip8, sdl_context: &sdl2::Sdl) -> u8 {
+        println!("WAIT FOR KEY");
+        use sdl2::event::Event;
+        let mut event_pump = sdl_context.event_pump().unwrap();
+        loop {
+            let event = event_pump.wait_event();
+            // TODO: This is stupid and there should be a better way to do this
+            match event {
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return 0x69,
+
+                Event::KeyDown { keycode: Some(Keycode::Num1), .. } => return 0x1,
+                Event::KeyDown { keycode: Some(Keycode::Num2), .. } => return 0x2,
+                Event::KeyDown { keycode: Some(Keycode::Num3), .. } => return 0x3,
+                Event::KeyDown { keycode: Some(Keycode::Num4), .. } => return 0xC,
+
+                Event::KeyDown { keycode: Some(Keycode::Q), .. } => return 0x4,
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => return 0x5,
+                Event::KeyDown { keycode: Some(Keycode::E), .. } => return 0x6,
+                Event::KeyDown { keycode: Some(Keycode::R), .. } => return 0xD,
+
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => return 0x7,
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => return 0x8,
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => return 0x9,
+                Event::KeyDown { keycode: Some(Keycode::F), .. } => return 0xE,
+
+                Event::KeyDown { keycode: Some(Keycode::Z), .. } => return 0xA,
+                Event::KeyDown { keycode: Some(Keycode::X), .. } => return 0x0,
+                Event::KeyDown { keycode: Some(Keycode::C), .. } => return 0xB,
+                Event::KeyDown { keycode: Some(Keycode::V), .. } => return 0xF,
+                _ => {} 
+            }
         }
     }
     pub fn print_chip8_keys(self: &Self, chip8: &Chip8){
