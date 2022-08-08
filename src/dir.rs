@@ -14,9 +14,9 @@ impl Navigator {
                 let abs_path = p.unwrap();
                 let file_name = abs_path.file_name().to_str().unwrap().to_string();
                 let path_str = abs_path.path().to_str().unwrap().to_string();
-                let md = std::fs::metadata(path_str.clone()).unwrap();
+                let meta = std::fs::metadata(path_str.clone()).unwrap();
                 path_vec.push(path_str.clone());
-                if md.is_dir() {
+                if meta.is_dir() {
                     println!("{}", path_str);
                 } else {
                     println!("{}. {}", i, file_name);
@@ -24,7 +24,6 @@ impl Navigator {
             }
         }
         
-        let mut sel_str: String = String::new();
         loop {
             let mut user_input = String::new();
             std::io::stdin().read_line(&mut user_input).ok();
@@ -34,9 +33,9 @@ impl Navigator {
                     if i <= 0 || i > path_vec.len() as u32 { 
                         println!("{} is outside the boundaries of the listed files.", i);
                     } else {
-                        sel_str = path_vec[i as usize - 1].to_string();
+                        let sel_str = path_vec[i as usize - 1].to_string();
                         println!("Selected: {}) {}", i, sel_str);
-                        break;
+                        return sel_str;
                     }
                 }
                 Err(..) => { 
@@ -44,7 +43,6 @@ impl Navigator {
                 }
             }
         }
-        return sel_str;
     }
 }
 
