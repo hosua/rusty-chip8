@@ -6,7 +6,6 @@ const MEM_SIZE: usize = 4096;
 const MSB_POS: usize = 7;
 const NUM_KEYS: usize = 16;
 const PX: &'static str = "\u{2588}\u{2588}";
-
 use crate::input;
 use std::num::Wrapping;
 use std::vec::Vec;
@@ -324,9 +323,11 @@ impl Chip8 {
                 self.v[0xF] = 0x0;
                 // Reduce if overflow
                 if self.v[x] > DISP_X as u8 {
+                    println!("Performing modulo reduction for x-axis");
                     self.v[x] %= DISP_X as u8; 
                 }
                 if self.v[y] > DISP_Y as u8 {
+                    println!("Performing modulo reduction for y-axis");
                     self.v[y] %= DISP_Y as u8; 
                 }
 
@@ -414,8 +415,8 @@ impl Chip8 {
                     // Fx29: LD F, Vx - Set I = location of sprite for digit Vx.
                     0x0029 => {
                         opstr = "LD";
-                        self.i += self.v[x] as u16 + 0x5;
-                        println!("{} i = Vx({:#05X}) + 0x5", opstr, self.v[x]);
+                        self.i = self.v[x] as u16 * 0x5;
+                        println!("{} i = Vx({:#05X}) * 0x5", opstr, self.v[x]);
                     }
                     // Fx33: LD B, Vx - Store BCD representation of Vx in memory locations I, I+1, and I+2.
                     0x0033 => {
@@ -426,7 +427,7 @@ impl Chip8 {
                         self.mem[self.i as usize + 1] = (self.v[x] / 10) % 10;
                         // Loads 1s place
                         self.mem[self.i as usize + 2] = self.v[x] % 10;
-                        println!("{} i = Vx({:#04X}) + 0x5", opstr, self.v[x]);
+                        println!("{} mem = Vx BCD", opstr);
                     }
                     // Fx55: LD [I], Vx - Store registers V0 through Vx in memory starting at location I.
                     0x0055 => {
