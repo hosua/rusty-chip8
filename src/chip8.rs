@@ -11,15 +11,17 @@ use std::num::Wrapping;
 use std::vec::Vec;
 use rand::Rng;
 
+#[derive(Debug)]
 pub struct Chip8 {
     mem: [u8; MEM_SIZE],
     // gfx can technically be a boolean array but I prefer using u8 
     // so that I can cleanly XOR its values
     pub gfx: [u8; DISP_X * DISP_Y],
-    stack: Vec<u16>,
     pub keys: [bool; NUM_KEYS],
     pub draw_flag: bool,
+    pub exit_flag: bool,
 
+    stack: Vec<u16>,
     // Registers
     v: [u8; NUM_VREGS], 
     i: u16,
@@ -27,8 +29,6 @@ pub struct Chip8 {
     dt: u8,
     st: u8,
     opcode: u16,
-
-    pub exit_flag: bool,
 }
 
 impl Chip8 {
@@ -80,7 +80,8 @@ impl Chip8 {
     // Load rom into memory starting at address 0x200
     pub fn load_rom(self: &mut Self, rom_path: String){
         println!("Loading game: {}", rom_path);
-        let mut _file = std::fs::File::open(&rom_path).expect("No file found");        
+        let mut _file = std::fs::File::open(&rom_path)
+            .expect("No file found");        
         // get file metadata
         let metadata = std::fs::metadata(&rom_path).unwrap();
         // copy raw file data to memory (fs::read conveniently returns a u8 vector)
@@ -93,8 +94,23 @@ impl Chip8 {
         println!("{} bits loaded into memory", _filesize);
         // close file
         drop(_file);
+    }
+
+    // delay timer
+    pub fn count_dt(self: &mut Self){
+        while self.dt > 0 {
+            // println!("Counting down");
+            self.dt -= 1;
+            std::thread::sleep(std::time::Duration::new(0, 100_000_000u32 / 60));
+        }
+        // Also delay for every frame
+        std::thread::sleep(std::time::Duration::new(0, 100_000_000u32 / 60));
+    }
+    // TODO: sound timer, after I actually do implement a sound to play
+    pub fn count_st(self: &mut Self){
 
     }
+
     // Execute a cpu cycle
     pub fn cycle(self: &mut Self, input_handler: &input::Handler, sdl_context: &sdl2::Sdl){
         self.fetch();
@@ -137,7 +153,7 @@ impl Chip8 {
                         println!("{}", opstr);
                     }
                     _ => {
-                        eprintln!("Invalid 0x0000 opcode ({:#6X})", self.opcode);
+                        eprintln!("Invalid 0x0000 opcode ({:#06X})", self.opcode);
                     }
                 }
             }
@@ -164,10 +180,10 @@ impl Chip8 {
                 opstr = "SE"; 
                 if self.v[x] == kk {
                     self.pc += 2;
-                    println!("{} Vx == kk{:#04X}", opstr, kk);
+                    println!("{} Vx == kk({:#04X})", opstr, kk);
                     println!("SKIPPING INSTRUCTION");
                 } else {
-                    println!("{} Vx != kk{:#04X}", opstr, kk);
+                    println!("{} Vx != kk({:#04X})", opstr, kk);
                     println!("NOT SKIPPING INSTRUCTION");
                 }
             }
@@ -177,10 +193,10 @@ impl Chip8 {
                 opstr = "SNE"; 
                 if self.v[x] != kk {
                     self.pc += 2;
-                    println!("{} Vx != kk{:#04X}", opstr, kk);
+                    println!("{} Vx != kk({:#04X})", opstr, kk);
                     println!("SKIPPING INSTRUCTION");
                 } else {
-                    println!("{} Vx == kk{:#04X}", opstr, kk);
+                    println!("{} Vx == kk({:#04X})", opstr, kk);
                     println!("NOT SKIPPING INSTRUCTION");
                 }
             }
@@ -302,7 +318,7 @@ impl Chip8 {
             0xA000 => {
                 opstr = "LD";
                 self.i = nnn;
-                println!("{} I = nnn({:#3X})", opstr, nnn);
+                println!("{} I = nnn({:#03X})", opstr, nnn);
             }
             // Bnnn: JP - Jump to nnn + V0
             0xB000 => {
@@ -315,14 +331,13 @@ impl Chip8 {
             0xC000 => {
                 opstr = "RND";
                 self.v[x] = rand::thread_rng().gen_range(0..0xFF) & kk;
-                println!("{} kk({:#04X}) = {:#04X}", opstr, kk, self.v[x]);
+                println!("{} v[{:#03X}] = {:#04X}", opstr, x, kk);
             }
             // Dxyn: DRW - Draw
             0xD000 => {
                 opstr = "DRW";
-                self.v[0xF] = 0x0;
                 // Reduce if overflow
-                if self.v[x] > DISP_X as u8 {
+                if self.v[x] >= DISP_X as u8 {
                     println!("Performing modulo reduction for x-axis");
                     self.v[x] %= DISP_X as u8; 
                 }
@@ -330,17 +345,28 @@ impl Chip8 {
                     println!("Performing modulo reduction for y-axis");
                     self.v[y] %= DISP_Y as u8; 
                 }
+                self.v[0xF] = 0x0;
 
                 for dy in 0..n as usize {
                     let px = self.mem[self.i as usize + dy];
                     for dx in 0..8 as usize {
                         if px & (0x80 >> dx) != 0 {
+                            // destination pixel
+                            let mut dest = self.v[x] as usize + dx + ((self.v[y] as usize + dy) * DISP_X);
+                            // I can't pinpoint why this overflows but I believe this is intended
+                            // behavior 
+                            if dest >= DISP_X * DISP_Y {
+                                dest -= DISP_X * DISP_Y;
+                            }
                             // If a pixel is drawn to an already drawn pixel, it is unset
-                            if self.gfx[(self.v[x] as usize + dx + ((self.v[y] as usize + dy) * DISP_X))] != 0{
+                            if self.gfx[dest] != 0{
                                 // Indicate that pixel was unset
                                 self.v[0xF] = 1;
                             }
-                            self.gfx[self.v[x] as usize + dx + ((self.v[y] as usize + dy) * DISP_X)] ^= 1;
+                            // Set the pixels to the screen. 
+                            // XOR'ing an already set bit will naturally unset it if it is 
+                            // already set.
+                            self.gfx[dest] ^= 1;
                         }
                     }
                 }
@@ -390,7 +416,7 @@ impl Chip8 {
                     // Fx0A: LD Vx, K - Wait for a key press and store the value of the key in Vx.
                     0x000A => {
                         opstr = "LD";
-                        let key_idx = input_handler.wait_for_key(self, sdl_context);
+                        let key_idx = input_handler.wait_for_key(sdl_context);
                         self.v[x] = key_idx;
                         println!("{} Vx, K{:#06X}", opstr, key_idx);
                     }
@@ -445,12 +471,10 @@ impl Chip8 {
                         }
                         println!("{} V0-Vx({:#X}) = mem", opstr, x);
                     }
-                    _ => {
-                        eprintln!("Invalid 0xF000 opcode {:#X}", self.opcode);  
-                    }
+                    _ => eprintln!("Invalid 0xF000 opcode {:#06X}", self.opcode)
                 }
             }
-            _ => eprintln!("Invalid opcode {:#X}", self.opcode),
+            _ => eprintln!("Invalid opcode {:#06X}", self.opcode)
         }
     }
     
@@ -458,24 +482,24 @@ impl Chip8 {
         println!("------------------------");
         println!("V REGISTERS:");
         for i in 0..NUM_VREGS {
-            print!("{:#5X}", i);
+            print!("{:#03X}  ", i);
         }
         println!();
 
         for i in 0..NUM_VREGS {
-            print!("{:#5X}", self.v[i]);
+            print!("{:#04X} ", self.v[i]);
         }
         println!();
 
-        println!("I: {:#X}", self.i);
-        println!("DT: {:#X}", self.dt);
-        println!("ST: {:#X}", self.st);
+        println!("I: {:#05X}", self.i);
+        println!("DT: {:#04X}", self.dt);
+        println!("ST: {:#04X}", self.st);
     }
 
     pub fn print_screen(self: &mut Self){
         if self.draw_flag {
-            for i in 0..DISP_X*DISP_Y {
-                if self.gfx[i] != 0 {
+            for (i, &px) in self.gfx.iter().enumerate() {
+                if px != 0 {
                     print!("{}", PX);
                 } else {
                     print!("  ");

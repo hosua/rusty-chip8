@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use sdl2::keyboard::Keycode;
-use sdl2::keyboard::Scancode;
 
 use crate::chip8::Chip8;
 // Provides a clean way of constructing a hashmap via a macro
@@ -36,6 +35,10 @@ impl Handler {
         // I want to do something like this, but how???
         // for (key, val) in &self.key_map {
         //     let key_idx = *val as usize;
+        //     // Check if key is Event::KeyDown
+        //     // Set chip8.keys[val] to true
+        //     // Check if key is Event::KeyUp
+        //     // Set chip8.keys[val] to false
         // }
         for event in event_pump.poll_iter() {
             use sdl2::event::Event;
@@ -113,13 +116,14 @@ impl Handler {
         }
         return false;
     }
-
-    pub fn wait_for_key(self: &Self, chip8: &mut Chip8, sdl_context: &sdl2::Sdl) -> u8 {
-        println!("WAIT FOR KEY");
+    // Stops thread and does not continue until a valid key is pressed. 
+    // Returns the index of that key.
+    pub fn wait_for_key(self: &Self, sdl_context: &sdl2::Sdl) -> u8 {
         use sdl2::event::Event;
         let mut event_pump = sdl_context.event_pump().unwrap();
         loop {
             let event = event_pump.wait_event();
+
             // TODO: This is stupid and there should be a better way to do this
             match event {
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => return 0x69,

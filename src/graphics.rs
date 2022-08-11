@@ -22,7 +22,7 @@ impl Display {
             let mut y_pos = 1;
             if chip8.draw_flag {
                 chip8.draw_flag = false;
-                for i in 0..DISP_X*DISP_Y {
+                for (i, _px) in chip8.gfx.iter().enumerate() {
                     if chip8.gfx[i] != 0 {
                         set_vec.push(Rect::new(x_pos * PIXEL_SIZE as i32, 
                                                y_pos * PIXEL_SIZE as i32, 
